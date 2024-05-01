@@ -19,6 +19,7 @@ tft = st7789fbuf.ST7789(
     color_order=st7789fbuf.BGR
 )
 
+RGB = st7789fbuf.color565
 CONFIG = mhconfig.Config()
 KB = smartkeyboard.KeyBoard(config=CONFIG)
 
@@ -38,14 +39,13 @@ def fetch_settings():
     f.close()
     return data
 
-
 def connect():
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
     if not wlan.isconnected():
         led.fill((10,0,0)); led.write()
-        tft.fill(CONFIG['bg_color'])
-        tft.text("Connecting to network...", 24, 63, CONFIG['ui_color'])
+        tft.fill(RGB(23,17,26))
+        tft.text("Connecting to network...", 24, 63, RGB(255,255,255))
         tft.show()
         print('Connecting to network...')
         wlan.connect(CONFIG["wifi_ssid"], CONFIG["wifi_pass"])
@@ -63,13 +63,13 @@ def wrap(text):
             current_string += word + " "
         else:
             lines.append(current_string)
-            current_string = word
+            current_string = word + " "
     lines.append(current_string)
     return lines
 
 def get_messages():
     led.fill((0,10,0)); led.write()
-    tft.fill_rect(0, 0, 240, 128, CONFIG['bg_color'])
+    tft.fill_rect(0, 0, 240, 112, RGB(23,17,26))
     validator = random.uniform(0, 1)
     http_req = requests.get(('https://' + str(server) + '/' + str(validator) + '/%2bget'), headers={})
     rawlog = http_req.content.decode("ascii")
@@ -81,16 +81,31 @@ def get_messages():
     chatlog = []
     for m in range(len(splitlog)):
         chatlog.append(str(b64.b32decode(splitlog[m]).decode("ascii"))[:-1])
+
     l = 0
+    total_lines = 0
+
+    printlog = []
+
     for i in range(len(chatlog)):
         if len(chatlog[len(chatlog)-1-i]) <= 30:
-            tft.text(chatlog[len(chatlog)-1-i], 0, 120-8*(16-(len(chatlog)-l)), CONFIG['ui_color'])
-            l += 1
+            printlog.append(chatlog[len(chatlog)-1-i])
+            print(chatlog[len(chatlog)-1-i])
+            total_lines += 0
         else:
             lines = wrap(chatlog[len(chatlog)-1-i])
             for z in range(len(lines)):
-                tft.text(lines[len(lines)-1-z], 0, 120-8*(16-(len(chatlog)-l)), CONFIG['ui_color'])
-                l += 1
+                printlog.append(lines[len(lines)-1-z])
+                print(lines[len(lines)-1-z])
+                total_lines += 0
+
+    overflow = len(printlog) - len(printlog[:15])
+    del printlog[-overflow:]
+
+    for line in printlog:
+        tft.text(line, 0, 120-8*(16-(len(printlog)-l)), RGB(255,255,255))
+        l += 1
+
     tft.show()
     led.fill((0,0,0)); led.write()
 
@@ -103,8 +118,8 @@ def send_message(message):
     get_messages()
 
 current_value = ''
-tft.fill(CONFIG['bg_color'])
-tft.text("Welcome to PicoChat!", 40, 63, CONFIG['ui_color'])
+tft.fill(RGB(23,17,26))
+tft.text("Welcome to PicoChat!", 40, 63, RGB(255,255,255))
 tft.show()
 time.sleep(2)
 SETTINGS = fetch_settings()
@@ -135,9 +150,8 @@ while True:
             elif len(key) == 1:
                 current_value += key
 
-    tft.fill_rect(0, 120, 240, 135, CONFIG['bg_color'])
-    field = wrap(current_value)
-    tft.text(field[len(field)-1], 0, 120, CONFIG['ui_color'])
+    tft.fill_rect(0, 112, 240, 135, RGB(62,55,92))
+    tft.text(current_value[-25:], 8, 120, RGB(178, 188, 194))
     tft.show()
 
     timer -= 1

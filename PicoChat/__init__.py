@@ -69,41 +69,39 @@ def wrap(text):
 
 def get_messages():
     led.fill((0,10,0)); led.write()
-    tft.fill_rect(0, 0, 240, 112, RGB(23,17,26))
+    tft.fill_rect(0, 0, 240, 120, RGB(23,17,26))
     validator = random.uniform(0, 1)
     http_req = requests.get(('https://' + str(server) + '/' + str(validator) + '/%2bget'), headers={})
     rawlog = http_req.content.decode("ascii")
     splitlog = rawlog.split('-')
 
-    overflow = len(splitlog) - len(splitlog[:15])
-    del splitlog[:overflow]
+    splitlog = splitlog[-15:]
 
     chatlog = []
-    for m in range(len(splitlog)):
+    m = 0
+    while m < len(splitlog):
         chatlog.append(str(b64.b32decode(splitlog[m]).decode("ascii"))[:-1])
+        m += 1
+    chatlog.pop()
 
-    l = 0
-    total_lines = 0
+    l = 1
 
     printlog = []
 
-    for i in range(len(chatlog)):
+    i = 0
+    while i < len(chatlog):
         if len(chatlog[len(chatlog)-1-i]) <= 30:
             printlog.append(chatlog[len(chatlog)-1-i])
-            print(chatlog[len(chatlog)-1-i])
-            total_lines += 0
         else:
             lines = wrap(chatlog[len(chatlog)-1-i])
             for z in range(len(lines)):
                 printlog.append(lines[len(lines)-1-z])
-                print(lines[len(lines)-1-z])
-                total_lines += 0
+        i += 1
 
-    overflow = len(printlog) - len(printlog[:15])
-    del printlog[-overflow:]
+    printlog = printlog[:15]
 
     for line in printlog:
-        tft.text(line, 0, 120-8*(16-(len(printlog)-l)), RGB(255,255,255))
+        tft.text(line, 0, 120-8*(15-(len(printlog)-l)), RGB(255,255,255))
         l += 1
 
     tft.show()
@@ -150,8 +148,8 @@ while True:
             elif len(key) == 1:
                 current_value += key
 
-    tft.fill_rect(0, 112, 240, 135, RGB(62,55,92))
-    tft.text(current_value[-25:], 8, 120, RGB(178, 188, 194))
+    tft.fill_rect(0, 120, 240, 135, RGB(62,55,92))
+    tft.text(current_value[-25:], 8, 124, RGB(178, 188, 194))
     tft.show()
 
     timer -= 1

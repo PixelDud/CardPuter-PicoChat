@@ -1,11 +1,20 @@
-import os, requests, network, random, time, neopixel, json
+import os
+import requests
+import network
+import random
+import time
+import json
+import uasyncio as asyncio
 from machine import SPI, Pin, freq, SDCard
 from lib import st7789fbuf, smartkeyboard, mhconfig
 from . import base64 as b64
 
+with open("config.json", "r") as conf:
+    config = json.loads(conf.read())
+    ui_color = config["ui_color"]
+    bg_color = config["bg_color"]
+
 freq(240000000)
-ledPin = Pin(21)
-led = neopixel.NeoPixel(ledPin, 1, bpp=3)
 
 # Sets up the display
 tft = st7789fbuf.ST7789(
@@ -19,6 +28,17 @@ tft = st7789fbuf.ST7789(
     rotation=1,
     color_order=st7789fbuf.BGR
 )
+
+async def timer_handler():
+    global timer
+    while True:
+        await asyncio.sleep(1)
+        timer -= 1
+        if timer <= 0:
+            connect()
+            get_messages()
+            timer = 120
+            
 
 # Gets username and server URL
 def fetch_settings():
@@ -51,15 +71,13 @@ def connect():
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
     if not wlan.isconnected():
-        led.fill((10,0,0)); led.write()
-        tft.fill(RGB(23,17,26))
-        tft.text("Connecting to network...", 24, 63, RGB(255,255,255))
+        tft.fill(bg_color)
+        tft.text("Connecting to network...", 24, 63, ui_color)
         tft.show()
         print('Connecting to network...')
         wlan.connect(CONFIG["wifi_ssid"], CONFIG["wifi_pass"])
         while not wlan.isconnected():
             pass
-        led.fill((0,0,0)); led.write()
     print('network config:', wlan.ifconfig())
 
 # For handling long messages
@@ -78,8 +96,7 @@ def wrap(text):
 
 # Gets chatlog from server, decodes, and displays it
 def get_messages():
-    led.fill((0,10,0)); led.write()
-    tft.fill_rect(0, 0, 240, 120, RGB(23,17,26))
+    tft.fill_rect(0, 0, 240, 120, bg_color)
     validator = random.uniform(0, 1)
     http_req = requests.get(('https://' + str(SERVER) + '/' + str(validator) + '/%2bget'), headers={})
     rawlog = http_req.content.decode("ascii")
@@ -111,19 +128,16 @@ def get_messages():
     printlog = printlog[:15]
 
     for line in printlog:
-        tft.text(line, 0, 120-8*(15-(len(printlog)-l)), RGB(255,255,255))
+        tft.text(line, 0, 120-8*(15-(len(printlog)-l)), ui_color)
         l += 1
 
     tft.show()
-    led.fill((0,0,0)); led.write()
 
 # Sends given message
 def send_message(message):
-    led.fill((0,0,10)); led.write()
     content = str(b64.b32encode(bytes(str("<" + USER + "> " + message + "\n"), "utf-8")).decode("ascii"))
     validator = random.uniform(0, 1)
     requests.get(('https://' + str(SERVER) + '/' + str(validator) + '/' + str(content)), headers={})
-    led.fill((0,0,0)); led.write()
     get_messages()
 
 # Moves cursor in set direction
@@ -156,7 +170,7 @@ def cursor_end(message):
     cursor_screen_pos = (len(message[-25:]) * 8) + 4
 
 # Main function
-def main():
+async def main():
     # Setup variables
     KB = smartkeyboard.KeyBoard(config=CONFIG)
     keys = KB.get_new_keys()
@@ -168,13 +182,13 @@ def main():
     timer = 120
 
     # Initialize PicoChat
-    tft.fill(RGB(23,17,26))
-    tft.text("Welcome to PicoChat!", 40, 63, RGB(255,255,255))
+    tft.fill(bg_color)
+    tft.text("Welcome to PicoChat!", 40, 63, ui_color)
     tft.show()
-    time.sleep(2)
+    time.sleep(1)
     connect()
     get_messages()
-
+    asyncio.create_task(timer_handler())
     # Main Loop
     while True:
         # Keyboard handling
@@ -190,11 +204,6 @@ def main():
                     move_cursor(-1, current_value)
                 elif key == "RIGHT":
                     move_cursor(1, current_value)
-                # Send message
-                elif key == "ENT":
-                    send_message(current_value)
-                    current_value = ''
-                    cursor_home()
                 # Handle message editing
                 elif key == "BSPC":
                     if cursor_text_pos != 0:
@@ -209,6 +218,12 @@ def main():
                 elif len(key) == 1:
                     current_value = current_value[:cursor_text_pos] + key + current_value[cursor_text_pos:]
                     move_cursor(1, current_value)
+                # Send message only when Enter is pressed
+                elif key == "ENT":
+                    if current_value:
+                        send_message(current_value)
+                        current_value = ''
+                        cursor_home()
 
         # Displays message being edited
         tft.fill_rect(0, 120, 240, 135, RGB(62,55,92))
@@ -222,16 +237,11 @@ def main():
 
         tft.show()
 
-        # Handles delay for fetching messages and ensuring network connection
-        timer -= 1
-        if timer <= 0:
-            connect()
-            get_messages()
-            timer = 120
-        
+
         # For blinking the cursor
         if timer % 30 == 0:
             cursor_visible = not cursor_visible
 
 # Calls main function
-main()
+asyncio.run(main())
+

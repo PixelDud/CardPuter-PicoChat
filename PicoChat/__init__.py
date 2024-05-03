@@ -178,6 +178,7 @@ async def main():
     current_value = ''
 
     cursor_visible = True
+    cursor_timer = 30
 
     timer = 120
 
@@ -233,15 +234,15 @@ async def main():
             tft.text(current_value[(cursor_text_pos-25):cursor_text_pos], 8, 124, RGB(178, 188, 194))
 
         if cursor_visible:
-            tft.text("|", cursor_screen_pos, 124, RGB(120, 132, 171))
+            tft.text("|", cursor_screen_pos, 124, RGB(255, 255, 255))
 
         tft.show()
 
-
         # For blinking the cursor
-        if timer % 30 == 0:
+        cursor_timer -= 1
+        if cursor_timer <= 0:
+            cursor_timer = 30
             cursor_visible = not cursor_visible
 
 # Calls main function
 asyncio.run(main())
-

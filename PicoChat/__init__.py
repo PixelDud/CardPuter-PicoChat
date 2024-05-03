@@ -3,6 +3,11 @@ from machine import SPI, Pin, freq, SDCard
 from lib import st7789fbuf, smartkeyboard, mhconfig
 from . import base64 as b64
 
+with open("config.json", "r") as conf:
+    config = json.loads(conf.read())
+    ui_color = config["ui_color"]
+    bg_color = config["bg_color"]
+
 freq(240000000)
 ledPin = Pin(21)
 led = neopixel.NeoPixel(ledPin, 1, bpp=3)
@@ -52,8 +57,8 @@ def connect():
     wlan.active(True)
     if not wlan.isconnected():
         led.fill((10,0,0)); led.write()
-        tft.fill(RGB(23,17,26))
-        tft.text("Connecting to network...", 24, 63, RGB(255,255,255))
+        tft.fill(bg_color)
+        tft.text("Connecting to network...", 24, 63, ui_color)
         tft.show()
         print('Connecting to network...')
         wlan.connect(CONFIG["wifi_ssid"], CONFIG["wifi_pass"])
@@ -79,7 +84,7 @@ def wrap(text):
 # Gets chatlog from server, decodes, and displays it
 def get_messages():
     led.fill((0,10,0)); led.write()
-    tft.fill_rect(0, 0, 240, 120, RGB(23,17,26))
+    tft.fill_rect(0, 0, 240, 120, bg_color)
     validator = random.uniform(0, 1)
     http_req = requests.get(('https://' + str(SERVER) + '/' + str(validator) + '/%2bget'), headers={})
     rawlog = http_req.content.decode("ascii")
@@ -111,7 +116,7 @@ def get_messages():
     printlog = printlog[:15]
 
     for line in printlog:
-        tft.text(line, 0, 120-8*(15-(len(printlog)-l)), RGB(255,255,255))
+        tft.text(line, 0, 120-8*(15-(len(printlog)-l)), ui_color)
         l += 1
 
     tft.show()
@@ -168,8 +173,8 @@ def main():
     timer = 120
 
     # Initialize PicoChat
-    tft.fill(RGB(23,17,26))
-    tft.text("Welcome to PicoChat!", 40, 63, RGB(255,255,255))
+    tft.fill(bg_color)
+    tft.text("Welcome to PicoChat!", 40, 63, ui_color)
     tft.show()
     time.sleep(2)
     connect()

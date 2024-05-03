@@ -7,6 +7,7 @@ freq(240000000)
 ledPin = Pin(21)
 led = neopixel.NeoPixel(ledPin, 1, bpp=3)
 
+# Sets up the display
 tft = st7789fbuf.ST7789(
     SPI(1, baudrate=40000000, sck=Pin(36), mosi=Pin(35), miso=None),
     135,
@@ -19,10 +20,7 @@ tft = st7789fbuf.ST7789(
     color_order=st7789fbuf.BGR
 )
 
-RGB = st7789fbuf.color565
-CONFIG = mhconfig.Config()
-KB = smartkeyboard.KeyBoard(config=CONFIG)
-
+# Gets username and server URL
 def fetch_settings():
     try:
         sd = SDCard(slot=2, sck=Pin(40), miso=Pin(39), mosi=Pin(14), cs=Pin(12))
@@ -39,6 +37,16 @@ def fetch_settings():
     f.close()
     return data
 
+# Initialize global variables
+RGB = st7789fbuf.color565
+CONFIG = mhconfig.Config()
+SETTINGS = fetch_settings()
+SERVER = SETTINGS['server']
+USER = SETTINGS['username']
+cursor_text_pos = 0
+cursor_screen_pos = 4
+
+# To connect to the network
 def connect():
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
@@ -54,6 +62,7 @@ def connect():
         led.fill((0,0,0)); led.write()
     print('network config:', wlan.ifconfig())
 
+# For handling long messages
 def wrap(text):
     words = str(text).split(' ')
     lines = []
@@ -67,11 +76,12 @@ def wrap(text):
     lines.append(current_string)
     return lines
 
+# Gets chatlog from server, decodes, and displays it
 def get_messages():
     led.fill((0,10,0)); led.write()
     tft.fill_rect(0, 0, 240, 120, RGB(23,17,26))
     validator = random.uniform(0, 1)
-    http_req = requests.get(('https://' + str(server) + '/' + str(validator) + '/%2bget'), headers={})
+    http_req = requests.get(('https://' + str(SERVER) + '/' + str(validator) + '/%2bget'), headers={})
     rawlog = http_req.content.decode("ascii")
     splitlog = rawlog.split('-')
 
@@ -107,53 +117,121 @@ def get_messages():
     tft.show()
     led.fill((0,0,0)); led.write()
 
+# Sends given message
 def send_message(message):
     led.fill((0,0,10)); led.write()
-    content = str(b64.b32encode(bytes(str("<" + username + "> " + message + "\n"), "utf-8")).decode("ascii"))
+    content = str(b64.b32encode(bytes(str("<" + USER + "> " + message + "\n"), "utf-8")).decode("ascii"))
     validator = random.uniform(0, 1)
-    requests.get(('https://' + str(server) + '/' + str(validator) + '/' + str(content)), headers={})
+    requests.get(('https://' + str(SERVER) + '/' + str(validator) + '/' + str(content)), headers={})
     led.fill((0,0,0)); led.write()
     get_messages()
 
-current_value = ''
-tft.fill(RGB(23,17,26))
-tft.text("Welcome to PicoChat!", 40, 63, RGB(255,255,255))
-tft.show()
-time.sleep(2)
-SETTINGS = fetch_settings()
-server = SETTINGS['server']
-username = SETTINGS['username']
-connect()
-get_messages()
+# Moves cursor in set direction
+def move_cursor(spaces, message):
+    global cursor_text_pos
+    global cursor_screen_pos
+    if spaces == 1:
+        if cursor_text_pos < len(message):
+            cursor_text_pos += 1
+            if cursor_screen_pos < 204:
+                cursor_screen_pos += 8
+    elif spaces == -1:
+        if cursor_text_pos > 0:
+            cursor_text_pos -= 1
+            if cursor_screen_pos > 4 and not cursor_text_pos >= 25:
+                cursor_screen_pos -= 8
 
-timer = 120;
+# Moves cursor to beginning of message
+def cursor_home():
+    global cursor_text_pos
+    global cursor_screen_pos
+    cursor_text_pos = 0
+    cursor_screen_pos = 4
 
-keys = KB.get_new_keys()
+# Moves cursor to end of message
+def cursor_end(message):
+    global cursor_text_pos
+    global cursor_screen_pos
+    cursor_text_pos = len(message)
+    cursor_screen_pos = (len(message[-25:]) * 8) + 4
 
-while True:
+# Main function
+def main():
+    # Setup variables
+    KB = smartkeyboard.KeyBoard(config=CONFIG)
     keys = KB.get_new_keys()
-    if keys:
-        for key in keys:
-            if key == "ENT":
-                send_message(current_value)
-                current_value = ''
-            elif key == "BSPC":
-                current_value = current_value[0:-1]
-            elif key == "SPC":
-                current_value = current_value + ' '
-            elif key == "DEL":
-                editor.del_line()
-            elif key == "ESC":
-                current_value = ''
-            elif len(key) == 1:
-                current_value += key
 
-    tft.fill_rect(0, 120, 240, 135, RGB(62,55,92))
-    tft.text(current_value[-25:], 8, 124, RGB(178, 188, 194))
+    current_value = ''
+
+    cursor_visible = True
+
+    timer = 120
+
+    # Initialize PicoChat
+    tft.fill(RGB(23,17,26))
+    tft.text("Welcome to PicoChat!", 40, 63, RGB(255,255,255))
     tft.show()
+    time.sleep(2)
+    connect()
+    get_messages()
 
-    timer -= 1
-    if timer <= 0:
-        connect()
-        get_messages()
-        timer = 120
+    # Main Loop
+    while True:
+        # Keyboard handling
+        keys = KB.get_new_keys()
+        if keys:
+            for key in keys:
+                # Handle cursor movement
+                if key == "UP":
+                    cursor_end(current_value)
+                elif key == "DOWN":
+                    cursor_home()
+                elif key == "LEFT":
+                    move_cursor(-1, current_value)
+                elif key == "RIGHT":
+                    move_cursor(1, current_value)
+                # Send message
+                elif key == "ENT":
+                    send_message(current_value)
+                    current_value = ''
+                    cursor_home()
+                # Handle message editing
+                elif key == "BSPC":
+                    if cursor_text_pos != 0:
+                        current_value = current_value[:(cursor_text_pos-1)] + current_value[cursor_text_pos:]
+                        move_cursor(-1, current_value)
+                elif key == "SPC":
+                    current_value = current_value[:cursor_text_pos] + ' ' + current_value[cursor_text_pos:]
+                    move_cursor(1, current_value)
+                elif key == "ESC":
+                    current_value = ''
+                    cursor_home()
+                elif len(key) == 1:
+                    current_value = current_value[:cursor_text_pos] + key + current_value[cursor_text_pos:]
+                    move_cursor(1, current_value)
+
+        # Displays message being edited
+        tft.fill_rect(0, 120, 240, 135, RGB(62,55,92))
+        if cursor_text_pos < 25:
+            tft.text(current_value[-25:], 8, 124, RGB(178, 188, 194))
+        else:
+            tft.text(current_value[(cursor_text_pos-25):cursor_text_pos], 8, 124, RGB(178, 188, 194))
+
+        if cursor_visible:
+            tft.text("|", cursor_screen_pos, 124, RGB(120, 132, 171))
+
+        tft.show()
+
+        # Handles delay for fetching messages and ensuring network connection
+        timer -= 1
+        if timer <= 0:
+            connect()
+            get_messages()
+            timer = 120
+        
+        # For blinking the cursor
+        if timer % 30 == 0:
+            cursor_visible = not cursor_visible
+
+# Calls main function
+main()
